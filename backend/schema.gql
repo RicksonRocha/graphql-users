@@ -5,6 +5,8 @@
 
 type Mutation {
   createUser(name: String!): User!
+  deleteUser(id: ID!): Boolean!
+  updateUser(id: ID!, name: String!): User
 }
 
 type Query {

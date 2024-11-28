@@ -1,28 +1,38 @@
-import { gql, useMutation } from "@apollo/client";
+import { useMutation } from "@apollo/client";
 import { FormEvent, useState } from "react";
-import { GET_USERS } from "../App";
+import { CREATE_USER, UPDATE_USER, GET_USERS } from "../graphql/users";
 import { client } from "../lib/apollo";
+import { User } from "../models/User";
 
-export const CREATE_USER = gql`
-  mutation ($name: String!) {
-    createUser(name: $name) {
-      id
-      name
-    }
+interface UserFormProps {
+  userToEdit?: User | null; // Para edição de usuários
+  onComplete?: () => void; // Callback após a conclusão
+}
+
+export function UserForm({ userToEdit, onComplete }: Readonly<UserFormProps>) {
+  const [name, setName] = useState<string>(userToEdit?.name ?? "");
+  const [createUser] = useMutation(CREATE_USER);
+  const [updateUser] = useMutation(UPDATE_USER);
+
+  async function update(userToEdit: User) {
+    await updateUser({
+      variables: { id: userToEdit.id, name },
+      update: (cache, { data: { updateUser } }) => {
+        const { users } = client.readQuery({ query: GET_USERS });
+        const updatedUsers = users.map((user: User) =>
+          user.id === updateUser.id ? updateUser : user
+        );
+        cache.writeQuery({
+          query: GET_USERS,
+          data: { users: updatedUsers },
+        });
+      },
+    });
   }
-`;
 
-export function UserForm() {
-  const [name, setName] = useState<string>();
-  const [createUser, { data }] = useMutation(CREATE_USER);
-  async function handleCreateUser(ev: FormEvent) {
-    ev.preventDefault();
-
-    if (!name) return;
-
+  async function create() {
     await createUser({
       variables: { name },
-      //   refetchQueries: [GET_USERS],
       update: (cache, { data: { createUser } }) => {
         const { users } = client.readQuery({ query: GET_USERS });
         cache.writeQuery({
@@ -31,18 +41,33 @@ export function UserForm() {
         });
       },
     });
-
-    alert(`Usuário ${data?.createUser.name} criado!`);
   }
+
+  async function handleSubmit(ev: FormEvent) {
+    ev.preventDefault();
+
+    if (!name) return;
+
+    if (userToEdit) {
+      update(userToEdit);
+    } else {
+      create();
+    }
+
+    alert(`Usuário ${userToEdit ? "atualizado" : "criado"} com sucesso!`);
+    setName("");
+    if (onComplete) onComplete();
+  }
+
   return (
-    <form onSubmit={handleCreateUser}>
+    <form onSubmit={handleSubmit}>
       <input
         type="text"
-        name="name"
+        placeholder="Nome do usuário"
         value={name}
         onChange={(ev) => setName(ev.target.value)}
       />
-      <button type="submit">Enviar</button>
+      <button type="submit">{userToEdit ? "Atualizar" : "Criar"}</button>
     </form>
   );
 }
